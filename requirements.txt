@@ -2,3 +2,5 @@ yt-dlp
 spotdl
 librosa
 numpy
+scipy
+git+https://github.com/superbock/madmom

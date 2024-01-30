@@ -1,0 +1,1 @@
+from openmxr.song import Song
