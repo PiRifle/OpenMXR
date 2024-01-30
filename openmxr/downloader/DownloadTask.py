@@ -1,4 +1,5 @@
 import concurrent.futures
+import logging
 from click import progressbar
 import requests
 import io
@@ -12,11 +13,18 @@ class DownloadTask:
     def get_size(self, url):
         response = requests.head(url)
         size = int(response.headers['Content-Length'])
+        logging.debug(f"HEAD REQUEST!! headers returned: {response.headers}")
+        if size == 0:
+            logging.warning(f"Head request body size returned 0, trying with body")
+            response = requests.get(url, stream=True)
+            logging.debug(f"HEAD REQUEST!! headers returned: {response.headers}")
+            size = int(response.headers['Content-Length'])
         return size
 
     def download_range(self, url, start, end, id):
         headers = {'Range': f'bytes={start}-{end}'}
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, stream=True)
+        logging.debug(f"range download headers returned: {response.headers}")
         output = io.BytesIO()
         for part in response.iter_content(1024):
             output.write(part)
@@ -51,3 +59,16 @@ class DownloadTask:
         for result in results:
             buffer+=result.getvalue()
         return buffer
+
+    def start_legacy(self):
+        file_size = self.get_size(self.url)
+        print("downloading", file_size, "bytes")
+        self.progress_bar = tqdm(total=file_size, unit='B', unit_scale=True)
+        content = bytes()
+        response = requests.get(self.url, stream=True)
+        logging.debug(f"range download headers returned: {response.headers}")
+        for i in response.iter_content(1024):
+            content += i
+            self.progress_bar.update(len(i))
+        self.progress_bar.close()
+        return content
