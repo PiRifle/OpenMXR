@@ -1,9 +1,17 @@
-from io import TextIOWrapper
+from io import BytesIO, TextIOWrapper
+import io
 import json
 import logging
 from os import makedirs, path
-import pickle
+import os
+from random import sample
+from typing import IO
+import numpy as np
+import soundfile as sf
 from pyparsing import Any
+from bz2 import BZ2Compressor, BZ2Decompressor
+from madmom.io.audio import load_wave_file, write_wave_file, Signal
+from tqdm.notebook import tqdm
 
 from openmxr.utils.hash import mkmd5
 
@@ -53,11 +61,42 @@ class Cache:
             
     
 class AudioCache(Cache):
+    compressor = BZ2Compressor()
+    decompressor = BZ2Decompressor()
     binary_format = True
-    @staticmethod
-    def load(file):
-        return tuple(pickle.load(file)) #type: ignore
+
+    def load(self, file: IO[Any]):
+        logging.debug(f"{self.name.upper()}: decompressing {file.name}")
+        buffer = io.BytesIO()
+        buffer.name = "audio.wav"
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        file.seek(0)
+        progress_bar = tqdm(total=size, unit='B', unit_scale=True, desc='Decompressing')
+        while True:
+                chunk = file.read(16384)
+                if not chunk:
+                    progress_bar.close()
+                    break
+                progress_bar.update(len(chunk))
+                buffer.write(self.decompressor.decompress(chunk))
+        logging.debug(f"{self.name.upper()}: converting {file.name}")
+        buffer.seek(0)
+        y, sr = sf.read(buffer)
+        return (sr, np.transpose(y))
     
-    @staticmethod
-    def dump(data, file):
-        pickle.dump(data, file) #type: ignore
+    def dump(self, data, file):
+        uncompressed = io.BytesIO()
+        uncompressed.name = "audio.wav"
+        logging.debug(f"{self.name.upper()}: converting {file.name}")
+        write_wave_file(Signal(data=np.transpose(data[1]), sample_rate=48000), uncompressed, 48000)
+        logging.debug(f"{self.name.upper()}: compressing {file.name}")
+        size = len(uncompressed.getvalue())
+        progress_bar = tqdm(total=size, unit='B', unit_scale=True, desc='Compressing')
+        while True:
+            chunk = uncompressed.read(16384)
+            if not chunk:
+                progress_bar.close()
+                break
+            progress_bar.update(len(chunk))
+            file.write(self.compressor.compress(chunk))

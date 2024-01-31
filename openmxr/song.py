@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from io import BytesIO, TextIOWrapper
+import librosa
 import numpy as np
 import numpy.typing as npt
 import requests
@@ -10,9 +11,7 @@ from openmxr.cache import AudioCache, Cache
 from openmxr.convert import convert_opus_to_wav
 from openmxr.downloader.DownloadTask import DownloadTask
 from openmxr import sp_client, dl_client, yt_client
-
-
-
+from scipy.signal import resample
 
 
 class Song():
@@ -25,6 +24,50 @@ class Song():
     __yt_cache_instance = Cache("yt")
     __spotify_cache_instance = Cache("spotify")
     __audio_cache_instance = AudioCache("audio")
+    
+    @property
+    def audio(self):
+        if (not self._audio_cache):
+            raise Exception("audio not available")
+        return self._audio_cache[1]
+    
+    @property
+    def audio_mono(self):
+        if (not self._audio_cache):
+            raise Exception("audio not available")
+        return self.to_mono(self._audio_cache[1])
+    
+    def to_mono(self, audio):
+        return librosa.to_mono(audio)
+    
+    @property
+    def sample_rate(self):
+        if (not self._audio_cache) or self._audio_cache[0] == None:
+            raise Exception("sample_rate not available")
+        return self._audio_cache[0]
+        
+        
+    @property
+    def youtube_meta(self):
+        if not self._yt_cache:
+            raise Exception("youtube metadata not available")
+        return self._yt_cache
+        
+    @property
+    def spotify_meta(self):
+        if not self._spotify_cache:
+            raise Exception("spotify metadata not available")
+        return self._spotify_cache
+    
+    def resampled(self, new_sample_rate, mono=False):
+        if mono:
+            audio = self.audio_mono
+        else:
+            audio = self.audio
+        if len(audio.shape) > 1:
+            return np.array([resample(channel, (len(channel)//self.sample_rate)*new_sample_rate) for channel in audio])
+        return resample(audio, (len(self.audio_mono)//self.sample_rate)*new_sample_rate)
+    
     
     def __init__(self, yt_url, spotify_url):
         self.yt_link = yt_url
@@ -127,9 +170,8 @@ class Song():
         logging.info(f"Converting {self._yt_cache['fulltitle']}")
         buffer = convert_opus_to_wav(buffer)
         logging.info(f"Converted {self._yt_cache['fulltitle']}")
-        
         y, sr = soundfile.read(BytesIO(buffer))
-        return (sr, y)
+        return (sr, np.transpose(y))
     
     def _download_spotify_meta(self) -> dict[str, Any]:
         spotify_song = sp_client.search([self.spotify_link])[0]
@@ -144,4 +186,4 @@ class Song():
     # def analyze(self) -> AnalyzedTrack:
     #     return AnalyzedTrack() 
     
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
