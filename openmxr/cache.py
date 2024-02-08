@@ -23,13 +23,11 @@ class Cache:
     def __init__(self, name: str):
         self.name = name
         self.check_cache_exists()
-    
-    @staticmethod
-    def load(file: TextIOWrapper):
+
+    def load(self, file: IO[Any]):
         return json.load(file)
 
-    @staticmethod
-    def dump(data, file: TextIOWrapper):
+    def dump(self, data, file: TextIOWrapper):
         return json.dump(data, file, ensure_ascii=False)
 
 
@@ -74,7 +72,7 @@ class AudioCache(Cache):
         file.seek(0)
         progress_bar = tqdm(total=size, unit='B', unit_scale=True, desc='Decompressing')
         while True:
-                chunk = file.read(16384)
+                chunk = file.read(262144)
                 if not chunk:
                     progress_bar.close()
                     break
@@ -94,7 +92,7 @@ class AudioCache(Cache):
         size = len(uncompressed.getvalue())
         progress_bar = tqdm(total=size, unit='B', unit_scale=True, desc='Compressing')
         while True:
-            chunk = uncompressed.read(16384)
+            chunk = uncompressed.read(262144)
             if not chunk:
                 progress_bar.close()
                 break
